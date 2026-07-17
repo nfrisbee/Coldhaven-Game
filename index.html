@@ -138,6 +138,22 @@ function P(text, cls){
   window.scrollTo(0, document.body.scrollHeight);
 }
 
+var LOG_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+var sessionId = '';
+function newSession(){
+  sessionId = Math.random().toString(36).slice(2,10) + '-' + Date.now().toString(36);
+}
+function logEvent(command){
+  if(!LOG_URL || LOG_URL.indexOf('PASTE_YOUR') === 0) return;
+  try{
+    fetch(LOG_URL, {
+      method:'POST',
+      mode:'no-cors',
+      body: JSON.stringify({sessionId:sessionId, room:(state && state.room) || '', command:command})
+    });
+  } catch(e){}
+}
+
 function rollDice(n, sides, bonus){
   var total = bonus || 0;
   for(var i=0;i<n;i++){ total += 1 + Math.floor(Math.random()*sides); }
@@ -158,7 +174,8 @@ var items = {
   oilskin_coat:{name:'oilskin coat', desc:'A heavy waxed coat, stiff with salt. Awkward to move in, but worn, it turns a blade better than bare skin.', takeable:true, armor:true, defBonus:1},
   iron_breastplate:{name:'iron breastplate', desc:'A dented iron breastplate, old enough to predate the village itself. Worn, it takes the worst of a hit for you.', takeable:true, armor:true, defBonus:2},
   whistle:{name:'silver whistle', desc:'A dented silver whistle on a leather cord. Smells faintly of pine.', takeable:true},
-  carved_token:{name:'carved token', desc:'A flat stone disc, the shrine\'s spiral etched into one face. It feels faintly warmer than the air around it, like something inside it is still awake.', takeable:true}
+  carved_token:{name:'carved token', desc:'A flat stone disc, the shrine\'s spiral etched into one face. It feels faintly warmer than the air around it, like something inside it is still awake.', takeable:true},
+  coiled_rope:{name:'coiled rope', desc:'A thick coil of rope, stiff with salt and years of disuse. Might be worth holding onto.', takeable:true}
 };
 
 var creatures = {
@@ -171,15 +188,15 @@ var creatures = {
 };
 
 var rooms = {
-  dock:{name:'the dock', desc:"The ferry that brought you idles behind you, engine ticking as it cools. Coldhaven's dock is empty except for coiled ropes and a few overturned crab cages. In front of you, a crooked staircase, seemingly randomly placed, descends into darkness. North, the village climbs a low hill.", exits:{north:'square', down:'cave'}, items:[], lookExtra:["Water slaps against the pilings, slow and unhurried.", "The ferry engine ticks as it cools, the only mechanical sound for miles."]},
-  square:{name:'the village square', desc:"The heart of Coldhaven: a dry, cracked fountain, a lopsided and tattered signpost, gulls that look half-alive picking at nothing in particular. East, the chapel. West, a dark-windowed tavern. North, a muddy lane that leads to a cottage with drawn curtains. A folded tide chart is pinned under a stone on the fountain's lip, as if waiting and begging to be picked up.", exits:{south:'dock', east:'chapel', west:'tavern', north:'cottage'}, items:['tide_chart'], lookExtra:["A gull watches you a beat too long before it moves on.", "The fountain hasn't held water in years, by the look of the stains."]},
-  chapel:{name:'the chapel', desc:"St. Anne's-by-the-Water, half-swallowed by ivy. The pews are dusty but not undisturbed. A brass bell sits unhung beside the altar, its rope frayed through. Something is tucked beneath a loose flagstone near the confessional.", exits:{west:'square'}, items:['brass_bell','journal1'], lookExtra:["A pew creaks somewhere behind you. No one's sitting in it.", "Dust motes hang in the light through the broken window, unmoving."]},
+  dock:{name:'the dock', desc:"The ferry that brought you idles behind you, engine ticking as it cools. Coldhaven's dock is empty except for a few overturned crab cages. In front of you, a crooked staircase, seemingly randomly placed, descends into darkness. North, the village climbs a low hill.", exits:{north:'square', down:'cave'}, items:['coiled_rope'], itemSentences:{coiled_rope:"A thick coil of rope lies stiff with salt near the pilings."}, lookExtra:["Water slaps against the pilings, slow and unhurried.", "The ferry engine ticks as it cools, the only mechanical sound for miles."]},
+  square:{name:'the village square', desc:"The heart of Coldhaven: a dry, cracked fountain, a lopsided and tattered signpost, gulls that look half-alive picking at nothing in particular. East, the chapel. West, a dark-windowed tavern. North, a muddy lane that leads to a cottage with drawn curtains.", exits:{south:'dock', east:'chapel', west:'tavern', north:'cottage'}, items:['tide_chart'], itemSentences:{tide_chart:"A folded tide chart is pinned under a stone on the fountain's lip, as if waiting and begging to be picked up."}, lookExtra:["A gull watches you a beat too long before it moves on.", "The fountain hasn't held water in years, by the look of the stains."]},
+  chapel:{name:'the chapel', desc:"St. Anne's-by-the-Water, half-swallowed by ivy. The pews are dusty but not undisturbed.", exits:{west:'square'}, items:['brass_bell','journal1'], itemSentences:{brass_bell:"A brass bell sits unhung beside the altar, its rope frayed through.", journal1:"Something is tucked beneath a loose flagstone near the confessional."}, lookExtra:["A pew creaks somewhere behind you. No one's sitting in it.", "Dust motes hang in the light through the broken window, unmoving."]},
   tavern:{name:'the drowned raven tavern', desc:"Empty chairs, one lit lamp. A barkeep who doesn't look up when the door creaks, polishing a glass that was already clean.", exits:{east:'square'}, items:[], lookExtra:["The barkeep's glass squeaks under the cloth, over and over.", "One of the empty chairs is pulled out, like someone just left it."]},
-  cottage:{name:"Vane's cottage", desc:"Books swollen with damp, a wretched wood stove, a chair pushed back. A rusted key hangs on a nail by the door, and an iron poker leans against the stove. Something is wedged in the floorboards near the hearth. North, the lighthouse tower. A warped back door hangs open to the east, onto the treeline.", exits:{south:'square', north:'lighthouse_base', east:'forest_edge'}, items:['rusty_key','journal2','iron_poker'], lookExtra:["The stove hasn't held a fire in weeks, but the room still smells of smoke.", "A calendar on the wall is marked up to a date three weeks ago, and no further."]},
-  lighthouse_base:{name:'the lighthouse base', desc:"The tower rises into fog; the top never visible. An unlit lantern sits on the bottom step, glass fogged with salt and wear, and an old harpoon hangs on a bracket by the door. A bolted trapdoor blocks the stair up.", exits:{south:'cottage', up:'lighthouse_top'}, items:['lantern','harpoon'], lockedUp:true, lookExtra:["The trapdoor above creaks on its own, though there's no wind down here.", "Salt crystals crunch faintly underfoot with every step."]},
-  lighthouse_top:{name:'the lighthouse gallery', desc:"Cold wind tears at you the moment you step out. Coldhaven spreads below, smaller than it has any right to look. Past the rocky shore, the water is the wrong color -- a slow, dark bloom under the surface that has nothing to do with weather. Something is tucked behind the lamp housing.", exits:{down:'lighthouse_base'}, items:['journal3'], lookExtra:["The lamp housing ticks as it cools, though it hasn't been lit in weeks.", "Far below, something in the water changes shape and then doesn't."]},
+  cottage:{name:"Vane's cottage", desc:"Books swollen with damp, a wretched wood stove, a chair pushed back. North, the lighthouse tower. A warped back door hangs open to the east, onto the treeline.", exits:{south:'square', north:'lighthouse_base', east:'forest_edge'}, items:['rusty_key','journal2','iron_poker'], itemSentences:{rusty_key:"A rusted key hangs on a nail by the door.", iron_poker:"An iron poker leans against the stove.", journal2:"Something is wedged in the floorboards near the hearth."}, lookExtra:["The stove hasn't held a fire in weeks, but the room still smells of smoke.", "A calendar on the wall is marked up to a date three weeks ago, and no further."]},
+  lighthouse_base:{name:'the lighthouse base', desc:"The tower rises into fog; the top never visible. A bolted trapdoor blocks the stair up.", exits:{south:'cottage', up:'lighthouse_top'}, items:['lantern','harpoon'], itemSentences:{lantern:"An unlit lantern sits on the bottom step, glass fogged with salt and wear.", harpoon:"An old harpoon hangs on a bracket by the door."}, lockedUp:true, lookExtra:["The trapdoor above creaks on its own, though there's no wind down here.", "Salt crystals crunch faintly underfoot with every step."]},
+  lighthouse_top:{name:'the lighthouse gallery', desc:"Cold wind tears at you the moment you step out. Coldhaven spreads below, smaller than it has any right to look. Past the rocky shore, the water is the wrong color -- a slow, dark bloom under the surface that has nothing to do with weather.", exits:{down:'lighthouse_base'}, items:['journal3'], itemSentences:{journal3:"Something is tucked behind the lamp housing."}, lookExtra:["The lamp housing ticks as it cools, though it hasn't been lit in weeks.", "Far below, something in the water changes shape and then doesn't."]},
   cave:{name:'the sea cave', desc:"The lantern barely holds back the dark. The passage narrows, walls slick and ridged in a way that's abnormal. Water drips from somewhere above. Ahead the tunnel opens into a chamber, and the thing that took Rorschach Vane is waiting there, patient.", exits:{up:'dock'}, items:[], needsLantern:true, lookExtra:["Something drags itself somewhere deeper in, slow and patient.", "The walls seem to breathe, just slightly, just enough to notice."]},
-  forest_edge:{name:'the forest edge', desc:"The treeline swallows the last of the village light within a few steps. Old nets and broken lobster traps rot in the underbrush, dragged here and forgotten, an oilskin coat draped over one of them, stiff with salt. The trees lean in close, as if listening. A path pushes deeper east.", exits:{west:'cottage', east:'deep_forest'}, items:['oilskin_coat'], lookExtra:["A branch snaps somewhere behind you. You don't turn around.", "The traps here weren't broken by weather."]},
+  forest_edge:{name:'the forest edge', desc:"The treeline swallows the last of the village light within a few steps. Old nets and broken lobster traps rot in the underbrush, dragged here and forgotten. The trees lean in close, as if listening. A path pushes deeper east.", exits:{west:'cottage', east:'deep_forest'}, items:['oilskin_coat'], itemSentences:{oilskin_coat:"An oilskin coat is draped over one of the traps, stiff with salt."}, lookExtra:["A branch snaps somewhere behind you. You don't turn around.", "The traps here weren't broken by weather."]},
   deep_forest:{name:'the deep forest', desc:"The canopy closes overhead until the light goes green and thin. Your footsteps are the only sound, which is somehow worse than if there were others'. A narrower trail breaks north around a huge dead oak, and the trees open onto a clearing to the east.", exits:{west:'forest_edge', north:'old_oak', east:'forest_clearing'}, items:[], creature:'gaunt_hound', lookExtra:["Something pale flickers between two trunks and is gone.", "The green light plays tricks -- or you hope it does."]},
   old_oak:{name:'the dead oak', desc:"A massive oak, split by lightning, hollow at its base. Someone has built a rough camp in its roots -- a bedroll, a measly firepit, a rifle propped against the bark.", exits:{south:'deep_forest'}, items:[], lookExtra:["The firepit's ash is cold, but someone's been feeding it recently.", "Tomas doesn't look up, but his grip tightens on the rifle."]},
   forest_clearing:{name:'the shrine clearing', desc:"The trees give way to a ring of standing stones, moss-choked and leaning. At the center, a flat stone shrine is carved with a spiral that seems to move if you look at it too long.", exits:{west:'deep_forest'}, items:[], creature:'hollow_warden', features:{shrine:"Stone worn smooth by centuries of rain, carved with a spiral that repeats and repeats until your eyes lose count. Something about it makes the back of your neck go cold. It feels, distinctly, like the cave."}, lookExtra:["The standing stones seem to lean a little closer than before.", "The spiral on the shrine seems to have shifted since you last looked."]}
@@ -214,9 +231,18 @@ function updateHud(){
   hud.textContent = t;
 }
 
+function itemText(r){
+  if(!r.itemSentences) return '';
+  var parts = [];
+  r.items.forEach(function(id){
+    if(r.itemSentences[id]) parts.push(r.itemSentences[id]);
+  });
+  return parts.length ? ' ' + parts.join(' ') : '';
+}
+
 function describeRoom(){
   var r = rooms[state.room];
-  P(r.desc);
+  P(r.desc + itemText(r));
   var here = r.items.map(function(id){return items[id].name;});
   if(here.length) P('You can see: ' + here.join(', ') + '.', 'accent');
   var exits = Object.keys(r.exits);
@@ -323,6 +349,7 @@ function die(){
   P('Type "restart" to try again.', 'echo');
   state.over = true;
   state.dead = true;
+  logEvent('EVENT:DIED');
 }
 
 function move(dir){
@@ -499,6 +526,7 @@ function ending(text, tag){
   P('THE END -- ' + tag, 'danger');
   P('Type "restart" to begin again.', 'echo');
   state.over = true;
+  logEvent('EVENT:ENDING:' + tag);
 }
 
 function doStatus(){
@@ -518,6 +546,7 @@ var dirWords = {north:'north',south:'south',east:'east',west:'west',up:'up',down
 var combatVerbs = ['attack','fight','flee','run','use','status','help','inventory','i'];
 
 function restart(){
+  newSession();
   state = {
     room:'dock', prevRoom:null, inv:[], lit:false,
     read1:false, read2:false, read3:false,
@@ -532,7 +561,7 @@ function restart(){
   rooms.cottage.items = ['rusty_key','journal2','iron_poker'];
   rooms.lighthouse_base.items = ['lantern','harpoon'];
   rooms.lighthouse_top.items = ['journal3'];
-  rooms.dock.items = [];
+  rooms.dock.items = ['coiled_rope'];
   rooms.cave.items = [];
   rooms.forest_edge.items = ['oilskin_coat'];
   rooms.deep_forest.items = [];
@@ -542,6 +571,7 @@ function restart(){
   updateHud();
   P('You step off the ferry into a fog that smells of salt and decay. The keeper of the Coldhaven light vanished three weeks ago. You are here to find out why.');
   describeRoom();
+  logEvent('GAME_START');
 }
 
 function process(raw){
@@ -603,6 +633,7 @@ form.addEventListener('submit', function(e){
   var val = input.value;
   if(!val.trim()) return;
   P('> ' + val, 'echo');
+  logEvent(val);
   process(val);
   input.value = '';
   input.focus();
