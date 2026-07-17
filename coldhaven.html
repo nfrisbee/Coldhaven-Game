@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coldhaven — a text adventure</title>
+<style>
+  :root {
+    --bg: #0b0f0e;
+    --panel: #101513;
+    --text: #c9d3ca;
+    --muted: #6f7d75;
+    --accent: #d9a94f;
+    --danger: #b5473f;
+    --border: #263029;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+  }
+  body {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px 64px;
+  }
+  #wrap {
+    width: 100%;
+    max-width: 680px;
+  }
+  header {
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
+  }
+  header h1 {
+    font-size: 22px;
+    font-weight: normal;
+    letter-spacing: 2px;
+    margin: 0 0 4px;
+    color: var(--accent);
+  }
+  header p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #hud {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  #log {
+    font-size: 15px;
+    line-height: 1.7;
+    padding-bottom: 8px;
+  }
+  #log p {
+    margin: 0 0 0.9em;
+  }
+  .echo { color: var(--muted); }
+  .accent { color: var(--accent); }
+  .danger { color: var(--danger); }
+  form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
+  }
+  form span {
+    color: var(--accent);
+    font-size: 15px;
+  }
+  input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 15px;
+    padding: 10px 12px;
+    outline: none;
+  }
+  input:focus {
+    border-color: var(--accent);
+  }
+  button {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 10px 16px;
+    cursor: pointer;
+  }
+  button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>COLDHAVEN</h1>
+    <p>a text adventure — type "help" for commands</p>
+    <div id="hud"></div>
+  </header>
+  <div id="log"></div>
+  <form id="cmdForm">
+    <span>&gt;</span>
+    <input id="cmdInput" type="text" autocomplete="off" placeholder="look, go north, help" />
+    <button type="submit">Send</button>
+  </form>
+</div>
+
+<script>
+(function(){
+var log = document.getElementById('log');
+var hud = document.getElementById('hud');
+var form = document.getElementById('cmdForm');
+var input = document.getElementById('cmdInput');
+
+function P(text, cls){
+  var p = document.createElement('p');
+  if(cls) p.className = cls;
+  p.textContent = text;
+  log.appendChild(p);
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+function rollDice(n, sides, bonus){
+  var total = bonus || 0;
+  for(var i=0;i<n;i++){ total += 1 + Math.floor(Math.random()*sides); }
+  return total;
+}
+
+var items = {
+  tide_chart:{name:'tide chart', desc:'Faded tide tables for Coldhaven harbor, decades out of date. Someone has circled tonight\'s low tide in pencil.', takeable:true},
+  brass_bell:{name:'brass bell', desc:'Green with age, heavier than it looks. There is a worn place on the rim shaped like a hand.', takeable:true},
+  rusty_key:{name:'rusty key', desc:'A short iron key, rust flaking from the bit. It smells of the sea.', takeable:true},
+  lantern:{name:'lantern', desc:'An oil lantern, glass fogged with salt. Still has fuel in it.', takeable:true},
+  journal1:{name:'torn page (I)', desc:'A page torn from a diary, ink smeared but legible.', takeable:true, read:"...the bell used to be rung every night at the turn of the tide. Stopped the winter my grandfather drowned. Something down there listens for it. I think it believes the bell is a voice. Or a trigger."},
+  journal2:{name:'torn page (II)', desc:'Another page, damp at the corners.', takeable:true, read:"...light's been flickering for three nights running. I've taken to locking the trapdoor from below. I don't like what gathers in the water when I look down from the gallery. I should ring the bell. I keep meaning to."},
+  journal3:{name:'torn page (III)', desc:'The last page, curling and stiff with salt.', takeable:true, read:"...it isn't in the cave, not really. The cave is just where it's thinnest between here and there. If you're reading this, ring the bell before you do anything else. Don't go down. I'm going down. -- Rorschach"},
+  gaff_hook:{name:'gaff hook', desc:'A rusted fishing hook lashed to a short haft. Balanced enough to swing. Equip it to add weight to your attacks.', takeable:true, weapon:true, dmgBonus:1},
+  iron_poker:{name:'iron poker', desc:'A fire poker, one end blackened, the other pounded to a rough point. Not elegant, but it hits hard when equipped.', takeable:true, weapon:true, dmgBonus:1},
+  harpoon:{name:'harpoon', desc:"A fisherman's harpoon, its barbed head still sharp despite the rust creeping up the shaft. Heavy, but equipped, it hits harder than anything else in Coldhaven.", takeable:true, weapon:true, dmgBonus:2},
+  oilskin_coat:{name:'oilskin coat', desc:'A heavy waxed coat, stiff with salt. Awkward to move in, but worn, it turns a blade better than bare skin.', takeable:true, armor:true, defBonus:1},
+  iron_breastplate:{name:'iron breastplate', desc:'A dented iron breastplate, old enough to predate the village itself. Worn, it takes the worst of a hit for you.', takeable:true, armor:true, defBonus:2},
+  whistle:{name:'silver whistle', desc:'A dented silver whistle on a leather cord. Smells faintly of pine.', takeable:true},
+  carved_token:{name:'carved token', desc:'A flat stone disc, the shrine\'s spiral etched into one face. It feels faintly warmer than the air around it, like something inside it is still awake.', takeable:true}
+};
+
+var creatures = {
+  gaunt_hound:{name:'gaunt hound', hp:8, atk:[1,4,0],
+    intro:"A gaunt hound slinks out from between the trees, ribs showing through wet matted fur, legs bending in places legs shouldn't bend. It doesn't bark. It watches you, and then it lunges.",
+    loot:['gaff_hook'], lootText:"Its collar has a rusted hook lashed to it, half-buried in fur."},
+  hollow_warden:{name:'hollow warden', hp:14, atk:[1,6,1],
+    intro:"Something rises from behind the shrine stones -- tall, wrapped in what might once have been robes, its face a knot of bark and shadow. It doesn't speak. It moves to bar your way.",
+    loot:['carved_token','iron_breastplate'], lootText:"As it falls still, a carved stone token rolls loose from its robes, and beneath them, dented and old, an iron breastplate."}
+};
+
+var rooms = {
+  dock:{name:'the dock', desc:"The ferry that brought you idles behind you, engine ticking as it cools. Coldhaven's dock is empty except for coiled ropes and a few overturned crab cages. In front of you, a crooked staircase, seemingly randomly placed, descends into darkness. North, the village climbs a low hill.", exits:{north:'square', down:'cave'}, items:[]},
+  square:{name:'the village square', desc:"The heart of Coldhaven: a dry, cracked fountain, a lopsided and tattered signpost, gulls that look half-alive picking at nothing in particular. East, the chapel. West, a dark-windowed tavern. North, a muddy lane that leads to a cottage with drawn curtains. A folded tide chart is pinned under a stone on the fountain's lip, as if waiting and begging to be picked up.", exits:{south:'dock', east:'chapel', west:'tavern', north:'cottage'}, items:['tide_chart']},
+  chapel:{name:'the chapel', desc:"St. Anne's-by-the-Water, half-swallowed by ivy. The pews are dusty but not undisturbed. A brass bell sits unhung beside the altar, its rope frayed through. Something is tucked beneath a loose flagstone near the confessional.", exits:{west:'square'}, items:['brass_bell','journal1']},
+  tavern:{name:'the drowned raven tavern', desc:"Empty chairs, one lit lamp. A barkeep who doesn't look up when the door creaks, polishing a glass that was already clean.", exits:{east:'square'}, items:[]},
+  cottage:{name:"Vane's cottage", desc:"Books swollen with damp, a wretched wood stove, a chair pushed back. A rusted key hangs on a nail by the door, and an iron poker leans against the stove. Something is wedged in the floorboards near the hearth. North, the lighthouse tower. A warped back door hangs open to the east, onto the treeline.", exits:{south:'square', north:'lighthouse_base', east:'forest_edge'}, items:['rusty_key','journal2','iron_poker']},
+  lighthouse_base:{name:'the lighthouse base', desc:"The tower rises into fog; the top never visible. An unlit lantern sits on the bottom step, glass fogged with salt and wear, and an old harpoon hangs on a bracket by the door. A bolted trapdoor blocks the stair up.", exits:{south:'cottage', up:'lighthouse_top'}, items:['lantern','harpoon'], lockedUp:true},
+  lighthouse_top:{name:'the lighthouse gallery', desc:"Cold wind tears at you the moment you step out. Coldhaven spreads below, smaller than it has any right to look. Past the rocky shore, the water is the wrong color -- a slow, dark bloom under the surface that has nothing to do with weather. Something is tucked behind the lamp housing.", exits:{down:'lighthouse_base'}, items:['journal3']},
+  cave:{name:'the sea cave', desc:"The lantern barely holds back the dark. The passage narrows, walls slick and ridged in a way that's abnormal. Water drips from somewhere above. Ahead the tunnel opens into a chamber, and the thing that took Rorschach Vane is waiting there, patient.", exits:{up:'dock'}, items:[], needsLantern:true},
+  forest_edge:{name:'the forest edge', desc:"The treeline swallows the last of the village light within a few steps. Old nets and broken lobster traps rot in the underbrush, dragged here and forgotten, an oilskin coat draped over one of them, stiff with salt. The trees lean in close, as if listening. A path pushes deeper east.", exits:{west:'cottage', east:'deep_forest'}, items:['oilskin_coat']},
+  deep_forest:{name:'the deep forest', desc:"The canopy closes overhead until the light goes green and thin. Your footsteps are the only sound, which is somehow worse than if there were others'. A narrower trail breaks north around a huge dead oak, and the trees open onto a clearing to the east.", exits:{west:'forest_edge', north:'old_oak', east:'forest_clearing'}, items:[], creature:'gaunt_hound'},
+  old_oak:{name:'the dead oak', desc:"A massive oak, split by lightning, hollow at its base. Someone has built a rough camp in its roots -- a bedroll, a measly firepit, a rifle propped against the bark.", exits:{south:'deep_forest'}, items:[]},
+  forest_clearing:{name:'the shrine clearing', desc:"The trees give way to a ring of standing stones, moss-choked and leaning. At the center, a flat stone shrine is carved with a spiral that seems to move if you look at it too long.", exits:{west:'deep_forest'}, items:[], creature:'hollow_warden', features:{shrine:"Stone worn smooth by centuries of rain, carved with a spiral that repeats and repeats until your eyes lose count. Something about it makes the back of your neck go cold. It feels, distinctly, like the cave."}}
+};
+
+var state;
+
+function itemsHere(){ return rooms[state.room].items; }
+function findItem(noun, list){
+  for(var i=0;i<list.length;i++){
+    var it = items[list[i]];
+    if(it.name.toLowerCase().indexOf(noun) !== -1) return list[i];
+  }
+  return null;
+}
+function findFeature(noun, obj){
+  if(!obj) return null;
+  for(var k in obj){
+    if(k.indexOf(noun) !== -1 || noun.indexOf(k) !== -1) return obj[k];
+  }
+  return null;
+}
+
+function updateHud(){
+  var t = 'HP ' + state.player.hp + '/' + state.player.maxHp;
+  t += '   weapon: ' + (state.equippedWeapon ? items[state.equippedWeapon].name : 'fists');
+  t += '   armor: ' + (state.equippedArmor ? items[state.equippedArmor].name : 'none');
+  if(state.combat){
+    var c = creatures[state.combat.id];
+    t += '   ' + c.name + ' HP ' + Math.max(state.combat.hp,0) + '/' + c.hp;
+  }
+  hud.textContent = t;
+}
+
+function describeRoom(){
+  var r = rooms[state.room];
+  P(r.desc);
+  var here = r.items.map(function(id){return items[id].name;});
+  if(here.length) P('You can see: ' + here.join(', ') + '.', 'accent');
+  var exits = Object.keys(r.exits);
+  P('Exits: ' + exits.join(', ') + '.', 'echo');
+  P('What would you like to do? (try look, take, examine, or a direction)', 'echo');
+}
+
+function checkEncounter(){
+  var r = rooms[state.room];
+  if(r.creature && !state.defeated[state.room] && !state.combat){
+    startCombat(r.creature);
+  }
+}
+
+function startCombat(creatureId){
+  var c = creatures[creatureId];
+  state.combat = {id:creatureId, hp:c.hp};
+  P('');
+  P(c.intro, 'danger');
+  P('(attack, flee, use [item], status)', 'echo');
+  updateHud();
+}
+
+function weaponBonus(){
+  return state.equippedWeapon ? items[state.equippedWeapon].dmgBonus : 0;
+}
+function armorReduction(){
+  return state.equippedArmor ? items[state.equippedArmor].defBonus : 0;
+}
+
+function doAttack(){
+  var c = creatures[state.combat.id];
+  var dmg = rollDice(1, 6, weaponBonus());
+  state.combat.hp -= dmg;
+  P('You strike the ' + c.name + ' for ' + dmg + ' damage.');
+  if(state.combat.hp <= 0){ winCombat(); return; }
+  var raw = rollDice(c.atk[0], c.atk[1], c.atk[2]);
+  var cdmg = Math.max(1, raw - armorReduction());
+  state.player.hp -= cdmg;
+  P('The ' + c.name + ' hits back for ' + cdmg + ' damage.', 'danger');
+  updateHud();
+  if(state.player.hp <= 0){ die(); }
+}
+
+function winCombat(){
+  var c = creatures[state.combat.id];
+  P('The ' + c.name + ' collapses and does not move again.', 'accent');
+  state.defeated[state.room] = true;
+  if(c.loot && c.loot.length){
+    P(c.lootText, 'echo');
+    c.loot.forEach(function(id){
+      rooms[state.room].items.push(id);
+      P('It leaves behind: ' + items[id].name + '.', 'accent');
+    });
+  }
+  state.combat = null;
+  updateHud();
+}
+
+function doCombatFlee(){
+  var c = creatures[state.combat.id];
+  if(Math.random() < 0.6){
+    P('You break away and put distance between you.', 'echo');
+    state.defeated[state.room] = 'fled';
+    state.combat = null;
+    state.room = state.prevRoom;
+    updateHud();
+    P('');
+    describeRoom();
+  } else {
+    P('You stumble -- no escape this time.', 'danger');
+    var raw = rollDice(c.atk[0], c.atk[1], c.atk[2]);
+    var cdmg = Math.max(1, raw - armorReduction());
+    state.player.hp -= cdmg;
+    P('The ' + c.name + ' catches you for ' + cdmg + ' damage.', 'danger');
+    updateHud();
+    if(state.player.hp <= 0){ die(); }
+  }
+}
+
+function doUseInCombat(noun){
+  if(!noun){ P('Use what?'); return; }
+  var c = creatures[state.combat.id];
+  if(noun.indexOf('whistle') !== -1 && state.inv.indexOf('whistle') !== -1){
+    if(state.combat.id === 'gaunt_hound'){
+      P('You blow the whistle. A shrill note cuts the air -- the hound flinches, snarls, and bolts into the dark.', 'accent');
+      state.defeated[state.room] = 'fled';
+      state.inv.splice(state.inv.indexOf('whistle'), 1);
+      state.combat = null;
+      updateHud();
+    } else {
+      P("The warden doesn't so much as flinch at the sound.");
+    }
+  } else if(noun.indexOf('lantern') !== -1 && state.lit){
+    P('You thrust the lantern forward. The light staggers the ' + c.name + ' for a moment, but it steadies.', 'echo');
+  } else {
+    P("That doesn't help here.");
+  }
+}
+
+function die(){
+  P('Everything goes dark.', 'danger');
+  P('YOU DIED', 'danger');
+  P('Type "restart" to try again.', 'echo');
+  state.over = true;
+  state.dead = true;
+}
+
+function move(dir){
+  var r = rooms[state.room];
+  var dest = r.exits[dir];
+  if(!dest){ P("You can't go that way."); return; }
+  if(dest === 'lighthouse_top' && r.lockedUp && state.inv.indexOf('rusty_key') === -1){
+    P('The trapdoor is bolted shut. It looks like it needs a key.'); return;
+  }
+  if(dest === 'cave' && !state.lit){
+    P("It's pitch dark down the stair. You'd be lost in seconds without a light.", 'danger'); return;
+  }
+  state.prevRoom = state.room;
+  state.room = dest;
+  P('');
+  describeRoom();
+  checkEncounter();
+}
+
+function doLook(){ describeRoom(); }
+
+function doExamine(noun){
+  if(!noun){ P('Examine what?'); return; }
+  var id = findItem(noun, state.inv) || findItem(noun, itemsHere());
+  if(id){ P(items[id].desc); return; }
+  var feat = findFeature(noun, rooms[state.room].features);
+  if(feat){ P(feat); return; }
+  P("You don't see that here.");
+}
+
+function doTake(noun){
+  if(!noun){ P('Take what?'); return; }
+  var id = findItem(noun, itemsHere());
+  if(!id){ P("There's nothing like that here."); return; }
+  itemsHere().splice(itemsHere().indexOf(id), 1);
+  state.inv.push(id);
+  P('You take the ' + items[id].name + '.', 'accent');
+}
+
+function doDrop(noun){
+  if(!noun){ P('Drop what?'); return; }
+  var id = findItem(noun, state.inv);
+  if(!id){ P("You aren't carrying that."); return; }
+  if(id === state.equippedWeapon){ state.equippedWeapon = null; }
+  if(id === state.equippedArmor){ state.equippedArmor = null; }
+  state.inv.splice(state.inv.indexOf(id), 1);
+  itemsHere().push(id);
+  P('You set down the ' + items[id].name + '.');
+  updateHud();
+}
+
+function doInventory(){
+  if(!state.inv.length){ P('You are carrying nothing.'); return; }
+  P('You are carrying: ' + state.inv.map(function(id){return items[id].name;}).join(', ') + '.', 'accent');
+}
+
+function doEquip(noun){
+  if(!noun){ P('Equip what?'); return; }
+  var id = findItem(noun, state.inv);
+  if(!id){ P("You aren't carrying that."); return; }
+  var it = items[id];
+  if(it.weapon){
+    if(state.equippedWeapon === id){ P('Already in hand.'); return; }
+    state.equippedWeapon = id;
+    P('You equip the ' + it.name + '.', 'accent');
+    updateHud();
+  } else if(it.armor){
+    if(state.equippedArmor === id){ P('Already worn.'); return; }
+    state.equippedArmor = id;
+    P('You put on the ' + it.name + '.', 'accent');
+    updateHud();
+  } else {
+    P("That's not something you can equip.");
+  }
+}
+
+function doUnequip(noun){
+  if(!noun){ P('Unequip what -- weapon or armor?'); return; }
+  var wantsWeapon = noun.indexOf('weapon') !== -1 || (state.equippedWeapon && items[state.equippedWeapon].name.toLowerCase().indexOf(noun) !== -1);
+  var wantsArmor = noun.indexOf('armor') !== -1 || (state.equippedArmor && items[state.equippedArmor].name.toLowerCase().indexOf(noun) !== -1);
+  if(wantsWeapon){
+    if(!state.equippedWeapon){ P("You aren't holding a weapon."); return; }
+    P('You lower the ' + items[state.equippedWeapon].name + '.');
+    state.equippedWeapon = null;
+    updateHud();
+  } else if(wantsArmor){
+    if(!state.equippedArmor){ P("You aren't wearing armor."); return; }
+    P('You take off the ' + items[state.equippedArmor].name + '.');
+    state.equippedArmor = null;
+    updateHud();
+  } else {
+    P("You don't have that equipped.");
+  }
+}
+
+function doRead(noun){
+  if(!noun){ P('Read what?'); return; }
+  var id = findItem(noun, state.inv);
+  if(!id || !items[id].read){ P("There's nothing to read there."); return; }
+  P(items[id].read, 'accent');
+  if(id === 'journal1') state.read1 = true;
+  if(id === 'journal2') state.read2 = true;
+  if(id === 'journal3') state.read3 = true;
+}
+
+function doLight(){
+  if(state.inv.indexOf('lantern') === -1){ P("You don't have anything to light."); return; }
+  state.lit = true;
+  P('You light the lantern. Its glow pushes back the fog a little.', 'accent');
+}
+
+function doTalk(){
+  if(state.room === 'tavern'){
+    P('"Vane," the barkeep says finally, not meeting your eyes. "Kept that light for thirty years, never missed a night. Three weeks back it went dark, and he went with it. Folk here don\'t go near the cave at low tide. Not since before I was born." He goes back to the glass. He won\'t say more.', 'accent');
+    return;
+  }
+  if(state.room === 'old_oak'){
+    if(state.talkedTomas){
+      P('"Watch the tree line," Tomas says again, not looking up. "That\'s all I\'ve got for you."');
+      return;
+    }
+    state.talkedTomas = true;
+    P('An old man sits against the oak\'s roots, a rifle across his knees. "Haven\'t seen a stranger out here in years," he says. "Lost my dog to the hounds last spring." He studies you a moment, then holds something out. "Take this. My father\'s whistle. The hounds don\'t care for the pitch. Won\'t stop the big ones in the clearing, but it\'ll buy you a second to run."', 'accent');
+    state.inv.push('whistle');
+    P('Tomas gives you the silver whistle.', 'accent');
+    return;
+  }
+  P("There's no one here to talk to.");
+}
+
+function doRing(){
+  if(state.inv.indexOf('brass_bell') === -1){ P("You don't have a bell to ring."); return; }
+  if(state.read1 && state.read2 && state.read3){
+    var extra = state.inv.indexOf('carved_token') !== -1
+      ? " The token in your pocket goes warm, then cold. As if something in it was released."
+      : "";
+    ending("You lift the bell and swing it. The sound rolls out over Coldhaven, low and true, the first time it's tolled in thirty years. In the square, lamps flicker on one by one. Out past the breakwater the dark bloom in the water stills, then sinks, then it is gone, as if it never surfaced at all." + extra + " You never learn what Rorschach Vane saw down there. Coldhaven, for now, gets to keep not knowing too.", 'you rang the bell');
+    return;
+  }
+  P('The bell tolls once, low and strange. Nothing answers. You get the feeling you\'re missing something -- some pages, maybe, still unread.');
+}
+
+function doConfront(){
+  if(state.room !== 'cave'){ P("There's nothing here to confront."); return; }
+  ending("You go forward, into the wet dark, because someone has to and Vane didn't get the chance to finish what he started. What's waiting for you doesn't have a face so much as a suggestion of one, assembled from everything Coldhaven has fed it over three hundred years of quiet drownings. It has been alone for a long time. It is very glad you came.", 'you went down');
+}
+
+function doFlee(){
+  if(state.room !== 'cave'){ P("There's nowhere here you need to flee from."); return; }
+  ending("You turn and run, lantern swinging wild shadows up the tunnel walls, and you don't stop until you're back on the dock gasping in the cold clean air. Whatever is down there stays down there, for now. Coldhaven will lose someone else eventually. It always has before.", 'you left it be');
+}
+
+function ending(text, tag){
+  P(text, 'accent');
+  P('THE END -- ' + tag, 'danger');
+  P('Type "restart" to begin again.', 'echo');
+  state.over = true;
+}
+
+function doStatus(){
+  updateHud();
+  P('HP: ' + state.player.hp + '/' + state.player.maxHp
+    + ' | weapon: ' + (state.equippedWeapon ? items[state.equippedWeapon].name : 'fists (1d6)')
+    + ' | armor: ' + (state.equippedArmor ? items[state.equippedArmor].name : 'none')
+    + (state.combat ? ' | ' + creatures[state.combat.id].name + ' HP: ' + Math.max(state.combat.hp,0) : ''), 'echo');
+}
+
+function doHelp(){
+  P('Commands: look, go [direction], north/south/east/west/up/down, examine [thing], take [thing], drop [thing], inventory, equip [thing], unequip weapon/armor, read [thing], light lantern, ring bell, talk, status, restart.', 'echo');
+  if(state.combat) P('In a fight: attack, flee, use [item], status.', 'echo');
+}
+
+var dirWords = {north:'north',south:'south',east:'east',west:'west',up:'up',down:'down',n:'north',s:'south',e:'east',w:'west',u:'up',d:'down'};
+var combatVerbs = ['attack','fight','flee','run','use','status','help','inventory','i'];
+
+function restart(){
+  state = {
+    room:'dock', prevRoom:null, inv:[], lit:false,
+    read1:false, read2:false, read3:false,
+    over:false, dead:false,
+    player:{hp:12, maxHp:12},
+    equippedWeapon:null, equippedArmor:null,
+    combat:null, defeated:{}, talkedTomas:false
+  };
+  rooms.square.items = ['tide_chart'];
+  rooms.chapel.items = ['brass_bell','journal1'];
+  rooms.tavern.items = [];
+  rooms.cottage.items = ['rusty_key','journal2','iron_poker'];
+  rooms.lighthouse_base.items = ['lantern','harpoon'];
+  rooms.lighthouse_top.items = ['journal3'];
+  rooms.dock.items = [];
+  rooms.cave.items = [];
+  rooms.forest_edge.items = ['oilskin_coat'];
+  rooms.deep_forest.items = [];
+  rooms.old_oak.items = [];
+  rooms.forest_clearing.items = [];
+  log.innerHTML = '';
+  updateHud();
+  P('You step off the ferry into a fog that smells of salt and decay. The keeper of the Coldhaven light vanished three weeks ago. You are here to find out why.');
+  describeRoom();
+}
+
+function process(raw){
+  var text = raw.trim().toLowerCase();
+  if(!text) return;
+  var parts = text.split(/\s+/);
+  var verb = parts[0];
+  var rest = parts.slice(1).join(' ');
+
+  var restartWords = ['restart','reset','clear'];
+
+  if(state.over && restartWords.indexOf(verb) === -1){
+    P((state.dead ? 'You are dead. ' : 'The story has ended. ') + 'Type "restart" to begin again.', 'echo');
+    return;
+  }
+
+  if(state.combat && combatVerbs.indexOf(verb) === -1 && restartWords.indexOf(verb) === -1){
+    P("You can't do that mid-fight! (attack, flee, use [item], status)");
+    return;
+  }
+
+  if(dirWords[verb] && parts.length === 1){ move(dirWords[verb]); return; }
+  if(verb === 'go' && dirWords[rest]){ move(dirWords[rest]); return; }
+
+  switch(verb){
+    case 'look': case 'l':
+      if(!rest){ doLook(); }
+      else { doExamine(rest.indexOf('at ') === 0 ? rest.slice(3) : rest); }
+      break;
+    case 'examine': case 'x': case 'inspect': doExamine(rest); break;
+    case 'take': case 'get': doTake(rest); break;
+    case 'drop': doDrop(rest); break;
+    case 'inventory': case 'i': doInventory(); break;
+    case 'equip': case 'wield': case 'wear': doEquip(rest); break;
+    case 'unequip': case 'remove': doUnequip(rest); break;
+    case 'read': doRead(rest); break;
+    case 'light': doLight(); break;
+    case 'talk': doTalk(); break;
+    case 'ring': doRing(); break;
+    case 'confront': doConfront(); break;
+    case 'attack': case 'fight':
+      if(!state.combat){ P("There's nothing here to fight."); break; }
+      doAttack(); break;
+    case 'flee': case 'run': case 'leave':
+      if(state.combat){ doCombatFlee(); } else { doFlee(); }
+      break;
+    case 'use':
+      if(state.combat){ doUseInCombat(rest); } else { P('Use what, and on what?'); }
+      break;
+    case 'status': doStatus(); break;
+    case 'help': doHelp(); break;
+    case 'restart': case 'reset': case 'clear': restart(); break;
+    default: P("I don't understand that. Type \"help\" for a list of commands.");
+  }
+}
+
+form.addEventListener('submit', function(e){
+  e.preventDefault();
+  var val = input.value;
+  if(!val.trim()) return;
+  P('> ' + val, 'echo');
+  process(val);
+  input.value = '';
+  input.focus();
+});
+
+restart();
+input.focus();
+})();
+</script>
+</body>
+</html>
