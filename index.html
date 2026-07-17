@@ -342,7 +342,25 @@ function move(dir){
   checkEncounter();
 }
 
-function doLook(){ describeRoom(); }
+var lookFlavors = [
+  "You look around again. Nothing new catches your eye, but the quiet presses in anyway.",
+  "You look around. Just shadows, and the sound of your own breathing.",
+  "You look around. Something about the stillness makes your skin crawl.",
+  "You look around. Nothing moves. That doesn't make you feel better.",
+  "You look around, but there's nothing more to see here -- not yet.",
+  "You take another look. Whatever's watching, it isn't showing itself."
+];
+
+function doLook(){
+  var r = rooms[state.room];
+  var here = r.items.map(function(id){return items[id].name;});
+  if(here.length){
+    P('You look around and notice: ' + here.join(', ') + '.', 'accent');
+  } else {
+    P(lookFlavors[Math.floor(Math.random() * lookFlavors.length)]);
+  }
+  P('Exits: ' + Object.keys(r.exits).join(', ') + '.', 'echo');
+}
 
 function doExamine(noun){
   if(!noun){ P('Examine what?'); return; }
